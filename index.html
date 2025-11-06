@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Riesgo de préstamos</title>
+  <link rel="stylesheet" href="./estilos.css">
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="dot"></div>
+      <h1>Riesgo de préstamos</h1>
+    </header>
+
+    <div class="grid">
+      <!-- Panel de entradas -->
+      <section class="card">
+        <p class="section-title">Entradas del modelo</p>
+
+        <div class="row">
+          <div class="label">Ingreso mensual (S/)</div>
+          <div class="ctrl">
+            <input id="ingresoSlider" type="range" min="0" max="10000" step="100" />
+            <input id="ingresoNum" type="number" />
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="label">Duración (meses)</div>
+          <div class="ctrl">
+            <input id="duracionSlider" type="range" min="6" max="72" step="1" />
+            <input id="duracionNum" type="number" />
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="label">Deuda / Ingreso (DTI)</div>
+          <div class="ctrl">
+            <input id="dtiSlider" type="range" min="0" max="1" step="0.01" />
+            <input id="dtiNum" type="number" step="0.01" />
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="label">Monto del crédito (S/)</div>
+          <div class="ctrl">
+            <input id="montoSlider" type="range" min="1000" max="100000" step="1000" />
+            <input id="montoNum" type="number" />
+          </div>
+        </div>
+
+        <div style="display:flex;gap:10px;margin-top:8px">
+          <button id="reset" class="btn">Restablecer</button>
+        </div>
+
+        <p class="footer small">Método: AND=min · Agregación=max · Implicación=min · Defuzz=centroid</p>
+      </section>
+
+      <!-- Panel de resultados -->
+      <section class="card">
+        <p class="section-title">Resultado</p>
+        <div class="result">
+          <div class="score" id="score">--</div>
+          <div class="badges">
+            <span id="decision" class="pill">—</span>
+            <span class="badge">Aprobación &lt; 0.40</span>
+            <span class="badge">Revisión 0.40–0.60</span>
+            <span class="badge">Denegado ≥ 0.60</span>
+          </div>
+          <div class="small muted">Score en rango [0,1], menor es menor riesgo.</div>
+        </div>
+
+        <div style="height:10px"></div>
+        <p class="section-title">Top reglas activas</p>
+        <div id="rules" class="rules">
+          <div class="rule muted">Sin reglas activas aún.</div>
+        </div>
+      </section>
+    </div>
+
+    <div class="footer">Modelo: <code>/modelo_prestamos.json</code></div>
+  </div>
+
+  <script>
+  // ---------- utilidades ----------
+  const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+  const linspace = (a, b, n) => {
+    const out = new Array(n); const step = (b - a) / (n - 1);
+    for (let i=0;i<n;i++) out[i] = a + i*step; return out;
+  };
+  const tri = (x,a,b,c) => (x<=a||x>=c)?0:(x===b?1:(x<a?0:(x<b?(x-a)/((b-a)||1e-12):(c-x)/((c-b)||1e-12))));
+  const trap = (x, a, b, c, d) => {
+  const eps = 1e-12;
+
+  // 1) Plateau primero (maneja a=b o c=d)
+  if (x >= b - eps && x <= c + eps) return 1;
+
+  // 2) Fuera del soporte
+  if (x <= a + eps || x >= d - eps) return 0;
+
+  // 3) Rampas
+  if (x > a && x < b) return (x - a) / ((b - a) || eps);   // ascendente
+  if (x > c && x < d) return (d - x) / ((d - c) || eps);   // descendente
+
+  // Casos límites numéricos
+  if (Math.abs(x - b) <= 1e-9 || Math.abs(x - c) <= 1e-9) return 1;
+  return 0;
+};
+;
+  const mu = (def, x) => def.type === "tri" ? tri(x, ...def.params) : trap(x, ...def.params);
+
+  // ---------- inferencia ----------
+  function infer(model, inputs){
+    const out = model.output;
+    const N = out.grid_points ?? 301;
+    const yGrid = linspace(out.range[0], out.range[1], N);
+    const agg = new Array(N).fill(0);
+    const fireList = []; // para top-3 reglas
+
+    for (let r = 0; r < model.rules.length; r++) {
+      const rule = model.rules[r];
+      let alpha = 1;
+      for (const [varName, label] of rule.if) {
+        const vdef = model.inputs[varName];
+        const x = clamp(inputs[varName], vdef.range[0], vdef.range[1]);
+        const sdef = vdef.sets[label];
+        const m = mu(sdef, x);
+        alpha = Math.min(alpha, m); // AND = min
+        if (alpha <= 0) break;
+      }
+      if (alpha <= 0) continue;
+
+      // Recorte (implicación=min) y agregación (max)
+      const outLabel = rule.then[1];
+      const odef = out.sets[outLabel];
+      for (let i=0;i<N;i++){
+        const mOut = mu(odef, yGrid[i]);
+        const clipped = Math.min(alpha, mOut);
+        if (clipped > agg[i]) agg[i] = clipped; // AGG = max
+      }
+      fireList.push({ idx:r, alpha, then: outLabel, if: rule.if });
+    }
+
+    
+    let num=0, den=0;
+    for (let i=0;i<N;i++){ num += yGrid[i]*agg[i]; den += agg[i]; }
+    const score = den>0 ? num/den : 0.5;
+
+    fireList.sort((a,b)=>b.alpha-a.alpha);
+    return { score, fires: fireList.slice(0,3) };
+  }
+
+  function decide(model, score){
+    const t = model.thresholds;
+    if (score < t.approve) return {text:"APROBADO", cls:"ok"};
+    if (score < t.review)  return {text:"RIESGO POTENCIAL", cls:"warn"};
+    return {text:"DENEGADO", cls:"bad"};
+  }
+
+  // ---------- UI ----------
+  const $ = (sel)=>document.querySelector(sel);
+  let model = null;
+
+  const ui = {
+    ingresoSlider: $("#ingresoSlider"), ingresoNum: $("#ingresoNum"),
+    duracionSlider: $("#duracionSlider"), duracionNum: $("#duracionNum"),
+    dtiSlider: $("#dtiSlider"), dtiNum: $("#dtiNum"),
+    montoSlider: $("#montoSlider"), montoNum: $("#montoNum"),
+    score: $("#score"), decision: $("#decision"), rules: $("#rules"),
+    reset: $("#reset"),
+  };
+
+  function bindPair(slider, number, min, max, step, val){
+    slider.min=min; slider.max=max; slider.step=step; slider.value=val;
+    number.min=min; number.max=max; number.step=step; number.value=val;
+    slider.addEventListener("input", ()=>{ number.value = slider.value; render(); });
+    number.addEventListener("input", ()=>{
+      const v = clamp(Number(number.value||0), Number(min), Number(max));
+      number.value = v; slider.value = v; render();
+    });
+  }
+
+  async function boot(){
+    try{
+      const res = await fetch("modelo_prestamos.json");
+      model = await res.json();
+    }catch(e){
+      alert("No se pudo cargar modelo_prestamos.json. Colócalo junto a index.html.");
+      console.error(e);
+      return;
+    }
+    // valores por defecto
+    bindPair(ui.ingresoSlider, ui.ingresoNum, 0, 10000, 100, 3000);
+    bindPair(ui.duracionSlider, ui.duracionNum, 6, 72, 1, 24);
+    bindPair(ui.dtiSlider, ui.dtiNum, 0, 1, 0.01, 0.35);
+    bindPair(ui.montoSlider, ui.montoNum, 1000, 100000, 1000, 20000);
+
+    ui.reset.addEventListener("click", ()=>{
+      ui.ingresoSlider.value = ui.ingresoNum.value = 3000;
+      ui.duracionSlider.value = ui.duracionNum.value = 24;
+      ui.dtiSlider.value = ui.dtiNum.value = 0.35;
+      ui.montoSlider.value = ui.montoNum.value = 20000;
+      render();
+    });
+
+    render();
+  }
+
+  function render(){
+    if(!model) return;
+    const inputs = {
+      ingreso_mensual: Number(ui.ingresoNum.value),
+      duracion_meses: Number(ui.duracionNum.value),
+      deuda_ingreso: Number(ui.dtiNum.value),
+      monto_credito: Number(ui.montoNum.value),
+    };
+    const { score, fires } = infer(model, inputs);
+    const dec = decide(model, score);
+
+    ui.score.textContent = score.toFixed(3);
+    ui.decision.textContent = dec.text;
+    ui.decision.className = "pill " + dec.cls;
+
+    // Top-3 reglas
+    ui.rules.innerHTML = "";
+    if (fires.length === 0){
+      const d = document.createElement("div");
+      d.className = "rule muted"; d.textContent = "Sin reglas activas (score neutro 0.5).";
+      ui.rules.appendChild(d);
+    } else {
+      fires.forEach((r, k)=>{
+        const d = document.createElement("div");
+        d.className = "rule";
+        const ants = r.if.map(([v,l])=>`${v} es ${l}`).join(" ∧ ");
+        d.innerHTML = `<strong>R${r.idx+1}</strong> · μ=${r.alpha.toFixed(2)} → riesgo <em>${r.then}</em><br/><span class="muted">${ants}</span>`;
+        ui.rules.appendChild(d);
+      });
+    }
+  }
+
+  boot();
+  </script>
+</body>
+</html>

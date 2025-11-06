@@ -1,0 +1,472 @@
+{
+  "inputs": {
+    "ingreso_mensual": {
+      "range": [
+        0,
+        10000
+      ],
+      "sets": {
+        "bajo": {
+          "type": "trap",
+          "params": [
+            0,
+            0,
+            1200,
+            2200
+          ]
+        },
+        "medio": {
+          "type": "tri",
+          "params": [
+            1800,
+            3500,
+            5200
+          ]
+        },
+        "alto": {
+          "type": "trap",
+          "params": [
+            4500,
+            6500,
+            10000,
+            10000
+          ]
+        }
+      }
+    },
+    "duracion_meses": {
+      "range": [
+        6,
+        72
+      ],
+      "sets": {
+        "corta": {
+          "type": "trap",
+          "params": [
+            6,
+            6,
+            12,
+            24
+          ]
+        },
+        "media": {
+          "type": "tri",
+          "params": [
+            18,
+            36,
+            48
+          ]
+        },
+        "larga": {
+          "type": "trap",
+          "params": [
+            42,
+            60,
+            72,
+            72
+          ]
+        }
+      }
+    },
+    "deuda_ingreso": {
+      "range": [
+        0,
+        1
+      ],
+      "sets": {
+        "bajo": {
+          "type": "trap",
+          "params": [
+            0.0,
+            0.0,
+            0.2,
+            0.35
+          ]
+        },
+        "medio": {
+          "type": "tri",
+          "params": [
+            0.3,
+            0.45,
+            0.6
+          ]
+        },
+        "alto": {
+          "type": "trap",
+          "params": [
+            0.55,
+            0.7,
+            1.0,
+            1.0
+          ]
+        }
+      }
+    },
+    "monto_credito": {
+      "range": [
+        1000,
+        100000
+      ],
+      "sets": {
+        "bajo": {
+          "type": "trap",
+          "params": [
+            1000,
+            1000,
+            5000,
+            15000
+          ]
+        },
+        "medio": {
+          "type": "tri",
+          "params": [
+            10000,
+            30000,
+            50000
+          ]
+        },
+        "alto": {
+          "type": "trap",
+          "params": [
+            40000,
+            70000,
+            100000,
+            100000
+          ]
+        }
+      }
+    }
+  },
+  "output": {
+    "name": "riesgo",
+    "range": [
+      0,
+      1
+    ],
+    "sets": {
+      "bajo": {
+        "type": "trap",
+        "params": [
+          0.0,
+          0.0,
+          0.2,
+          0.4
+        ]
+      },
+      "medio": {
+        "type": "tri",
+        "params": [
+          0.3,
+          0.5,
+          0.7
+        ]
+      },
+      "alto": {
+        "type": "trap",
+        "params": [
+          0.6,
+          0.8,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    "defuzz": "centroid",
+    "grid_points": 301
+  },
+  "logic": {
+    "t_norm": "min",
+    "s_norm": "max",
+    "implication": "min"
+  },
+  "rules": [
+    {
+      "if": [
+        [
+          "ingreso_mensual",
+          "alto"
+        ],
+        [
+          "deuda_ingreso",
+          "bajo"
+        ],
+        [
+          "duracion_meses",
+          "corta"
+        ],
+        [
+          "monto_credito",
+          "bajo"
+        ]
+      ],
+      "then": [
+        "riesgo",
+        "bajo"
+      ]
+    },
+    {
+      "if": [
+        [
+          "ingreso_mensual",
+          "alto"
+        ],
+        [
+          "deuda_ingreso",
+          "bajo"
+        ],
+        [
+          "duracion_meses",
+          "corta"
+        ],
+        [
+          "monto_credito",
+          "medio"
+        ]
+      ],
+      "then": [
+        "riesgo",
+        "bajo"
+      ]
+    },
+    {
+      "if": [
+        [
+          "ingreso_mensual",
+          "alto"
+        ],
+        [
+          "deuda_ingreso",
+          "medio"
+        ],
+        [
+          "duracion_meses",
+          "corta"
+        ]
+      ],
+      "then": [
+        "riesgo",
+        "medio"
+      ]
+    },
+    {
+      "if": [
+        [
+          "monto_credito",
+          "alto"
+        ],
+        [
+          "ingreso_mensual",
+          "alto"
+        ],
+        [
+          "deuda_ingreso",
+          "bajo"
+        ]
+      ],
+      "then": [
+        "riesgo",
+        "medio"
+      ]
+    },
+    {
+      "if": [
+        [
+          "ingreso_mensual",
+          "alto"
+        ],
+        [
+          "deuda_ingreso",
+          "alto"
+        ]
+      ],
+      "then": [
+        "riesgo",
+        "alto"
+      ]
+    },
+    {
+      "if": [
+        [
+          "monto_credito",
+          "alto"
+        ],
+        [
+          "duracion_meses",
+          "larga"
+        ]
+      ],
+      "then": [
+        "riesgo",
+        "alto"
+      ]
+    },
+    {
+      "if": [
+        [
+          "monto_credito",
+          "alto"
+        ],
+        [
+          "deuda_ingreso",
+          "medio"
+        ]
+      ],
+      "then": [
+        "riesgo",
+        "alto"
+      ]
+    },
+    {
+      "if": [
+        [
+          "ingreso_mensual",
+          "medio"
+        ],
+        [
+          "deuda_ingreso",
+          "bajo"
+        ],
+        [
+          "duracion_meses",
+          "corta"
+        ],
+        [
+          "monto_credito",
+          "bajo"
+        ]
+      ],
+      "then": [
+        "riesgo",
+        "medio"
+      ]
+    },
+    {
+      "if": [
+        [
+          "ingreso_mensual",
+          "medio"
+        ],
+        [
+          "deuda_ingreso",
+          "medio"
+        ]
+      ],
+      "then": [
+        "riesgo",
+        "medio"
+      ]
+    },
+    {
+      "if": [
+        [
+          "ingreso_mensual",
+          "medio"
+        ],
+        [
+          "deuda_ingreso",
+          "alto"
+        ]
+      ],
+      "then": [
+        "riesgo",
+        "alto"
+      ]
+    },
+    {
+      "if": [
+        [
+          "ingreso_mensual",
+          "bajo"
+        ],
+        [
+          "deuda_ingreso",
+          "alto"
+        ]
+      ],
+      "then": [
+        "riesgo",
+        "alto"
+      ]
+    },
+    {
+      "if": [
+        [
+          "ingreso_mensual",
+          "bajo"
+        ],
+        [
+          "deuda_ingreso",
+          "medio"
+        ]
+      ],
+      "then": [
+        "riesgo",
+        "alto"
+      ]
+    },
+    {
+      "if": [
+        [
+          "deuda_ingreso",
+          "bajo"
+        ],
+        [
+          "duracion_meses",
+          "corta"
+        ],
+        [
+          "monto_credito",
+          "bajo"
+        ]
+      ],
+      "then": [
+        "riesgo",
+        "bajo"
+      ]
+    },
+    {
+      "if": [
+        [
+          "duracion_meses",
+          "larga"
+        ],
+        [
+          "deuda_ingreso",
+          "bajo"
+        ],
+        [
+          "ingreso_mensual",
+          "medio"
+        ]
+      ],
+      "then": [
+        "riesgo",
+        "medio"
+      ]
+    },
+    {
+      "if": [
+        [
+          "monto_credito",
+          "medio"
+        ],
+        [
+          "duracion_meses",
+          "media"
+        ],
+        [
+          "deuda_ingreso",
+          "medio"
+        ]
+      ],
+      "then": [
+        "riesgo",
+        "medio"
+      ]
+    }
+  ],
+  "thresholds": {
+    "approve": 0.4,
+    "review": 0.6
+  }
+}
